@@ -52,8 +52,10 @@ from __future__ import print_function
 # -- imports -------------------------------------------------------------------
 # ==============================================================================
 
-
+import sys
 import carla
+
+sys.path.append("C:/CARLA/CARLA_0.9.11/WindowsNoEditor/PythonAPI/") # Add to path in order to access "examples"-folder
 
 from examples.manual_control import (World, HUD, KeyboardControl, CameraManager,
                                      CollisionSensor, LaneInvasionSensor, GnssSensor, IMUSensor)
@@ -202,6 +204,8 @@ def main():
         default='1280x720',
         help='window resolution (default: 1280x720)')
     args = argparser.parse_args()
+
+    args.host = '192.168.1.13'  # Change IP of the host server
 
     args.rolename = 'hero'      # Needed for CARLA version
     args.filter = "vehicle.*"   # Needed for CARLA version

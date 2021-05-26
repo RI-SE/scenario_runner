@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (c) 2019-2021 Intel Corporation
+# Copyright (c) 2019-2020 Intel Corporation
 #
 # This work is licensed under the terms of the MIT license.
 # For a copy, see <https://opensource.org/licenses/MIT>.
@@ -178,6 +178,8 @@ class OpenScenarioParser(object):
         """
 
         parameter_dict = dict()
+        if additional_parameter_dict is not None:
+            parameter_dict = additional_parameter_dict
         parameters = xml_tree.find('ParameterDeclarations')
 
         if parameters is None and not parameter_dict:
@@ -189,11 +191,11 @@ class OpenScenarioParser(object):
         for parameter in parameters:
             name = parameter.attrib.get('name')
             value = parameter.attrib.get('value')
-            parameter_dict[name] = value
 
-        # overwrite parameters in parameters_dict by additional_parameters_dict
-        if additional_parameter_dict is not None:
-            parameter_dict = dict(list(parameter_dict.items()) + list(additional_parameter_dict.items()))
+            if name[0] == '$':
+                name = name[1:]
+
+            parameter_dict[name] = value
 
         for node in xml_tree.iter():
             for key in node.attrib:
@@ -348,7 +350,7 @@ class OpenScenarioParser(object):
         carla_weather.precipitation = 0
         carla_weather.precipitation_deposits = 0
         carla_weather.wetness = 0
-        carla_weather.wind_intensity = 30.0
+        carla_weather.wind_intensity = 0
         precepitation = weather.find("Precipitation")
         if precepitation.attrib.get('precipitationType') == "rain":
             carla_weather.precipitation = float(precepitation.attrib.get('intensity')) * 100
@@ -491,7 +493,7 @@ class OpenScenarioParser(object):
                         actor_transform = obj_actor.get_transform()
                         break
 
-            if obj_actor is None or actor_transform is None:
+            if obj_actor is None:
                 raise AttributeError("Object '{}' provided as position reference is not known".format(obj))
 
             # calculate orientation h, p, r
@@ -590,8 +592,7 @@ class OpenScenarioParser(object):
             is_absolute = True
             waypoint = CarlaDataProvider.get_map().get_waypoint_xodr(road_id, lane_id, s)
             if waypoint is None:
-                raise AttributeError("Lane position 'roadId={}, laneId={}, s={}, offset={}' does not exist".format(
-                    road_id, lane_id, s, offset))
+                raise AttributeError("Lane position cannot be found")
 
             transform = waypoint.transform
             if lane_pos.find('Orientation') is not None:
@@ -882,7 +883,7 @@ class OpenScenarioParser(object):
                 state = state_condition.attrib.get('state')
                 if state == "startTransition":
                     atomic = OSCStartEndCondition(element_type, element_name, rule="START", name=state + "Condition")
-                elif state in ["stopTransition", "endTransition", "completeState"]:
+                elif state == "stopTransition" or state == "endTransition" or state == "completeState":
                     atomic = OSCStartEndCondition(element_type, element_name, rule="END", name=state + "Condition")
                 else:
                     raise NotImplementedError(
@@ -1004,8 +1005,7 @@ class OpenScenarioParser(object):
                         continuous = relative_speed.attrib.get('continuous')
 
                         for traffic_actor in actor_list:
-                            if (traffic_actor is not None and 'role_name' in traffic_actor.attributes and
-                                    traffic_actor.attributes['role_name'] == obj):
+                            if 'role_name' in traffic_actor.attributes and traffic_actor.attributes['role_name'] == obj:
                                 obj_actor = traffic_actor
 
                         atomic = ChangeActorTargetSpeed(actor,
@@ -1043,7 +1043,7 @@ class OpenScenarioParser(object):
                             lat_maneuver.find("LaneChangeActionDynamics").attrib.get('value', float("inf")))
                     atomic = ChangeActorLateralMotion(actor, direction=direction,
                                                       distance_lane_change=distance,
-                                                      distance_other_lane=10,
+                                                      distance_other_lane=1000,
                                                       lane_changes=lane_changes,
                                                       name=maneuver_name)
                 elif private_action.find('LaneOffsetAction') is not None:
@@ -1063,14 +1063,14 @@ class OpenScenarioParser(object):
                         relative_offset = float(relative_target_offset.attrib.get('value', 0))
 
                         relative_actor = None
-                        relative_actor_name = relative_target_offset.attrib.get('entityRef', None)
                         for _actor in actor_list:
-                            if _actor is not None and 'role_name' in _actor.attributes:
-                                if relative_actor_name == _actor.attributes['role_name']:
-                                    relative_actor = _actor
-                                    break
+                            if relative_target_offset.attrib.get('entityRef', None) == _actor.attributes['role_name']:
+                                relative_actor = _actor
+                                break
+
                         if relative_actor is None:
-                            raise AttributeError("Cannot find actor '{}' for condition".format(relative_actor_name))
+                            raise AttributeError("Cannot find actor '{}' for condition".format(
+                                relative_target_offset.attrib.get('entityRef', None)))
 
                         atomic = ChangeActorLaneOffset(actor, relative_offset, relative_actor,
                                                        continuous=continuous, name=maneuver_name)
@@ -1086,10 +1086,9 @@ class OpenScenarioParser(object):
 
                 master_actor = None
                 for actor_ins in actor_list:
-                    if actor_ins is not None and 'role_name' in actor_ins.attributes:
-                        if sync_action.attrib.get('masterEntityRef', None) == actor_ins.attributes['role_name']:
-                            master_actor = actor_ins
-                            break
+                    if sync_action.attrib.get('masterEntityRef', None) == actor_ins.attributes['role_name']:
+                        master_actor = actor_ins
+                        break
 
                 if master_actor is None:
                     raise AttributeError("Cannot find actor '{}' for condition".format(
