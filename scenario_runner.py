@@ -559,9 +559,6 @@ def main():
     arguments = parser.parse_args()
     # pylint: enable=line-too-long
 
-    arguments.sync = False
-    arguments.host = '192.168.1.13' # Change IP of the host server
-    arguments.openscenario = r'C:\Users\thangho\OneDrive - RISE\HIL_VIL_projekt\VirtualValidation\OpenSCENARIO\ScenarioFiles\Carla\TI_3851.xosc' # Path to openSCENARIO-file
 
     if arguments.list:
         print("Currently the following scenarios are supported:")
