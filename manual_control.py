@@ -205,7 +205,6 @@ def main():
         help='window resolution (default: 1280x720)')
     args = argparser.parse_args()
 
-    args.host = '192.168.1.13'  # Change IP of the host server
 
     args.rolename = 'hero'      # Needed for CARLA version
     args.filter = "vehicle.*"   # Needed for CARLA version
