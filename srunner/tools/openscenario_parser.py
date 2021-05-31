@@ -191,6 +191,10 @@ class OpenScenarioParser(object):
         for parameter in parameters:
             name = parameter.attrib.get('name')
             value = parameter.attrib.get('value')
+
+            if name[0] == '$':
+                name = name[1:]
+
             parameter_dict[name] = value
 
         for node in xml_tree.iter():
