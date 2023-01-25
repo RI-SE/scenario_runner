@@ -41,7 +41,7 @@ from srunner.tools.scenario_parser import ScenarioConfigurationParser
 from srunner.tools.route_parser import RouteParser
 
 # Version of scenario_runner
-VERSION = '0.9.11'
+VERSION = '0.9.13'
 
 
 class ScenarioRunner(object):
@@ -67,6 +67,8 @@ class ScenarioRunner(object):
     world = None
     manager = None
 
+    finished = False
+
     additional_scenario_module = None
 
     agent_instance = None
@@ -87,11 +89,10 @@ class ScenarioRunner(object):
         # requests in the localhost at port 2000.
         self.client = carla.Client(args.host, int(args.port))
         self.client.set_timeout(self.client_timeout)
-        CarlaDataProvider.set_client(self.client)
 
         dist = pkg_resources.get_distribution("carla")
-        if LooseVersion(dist.version) < LooseVersion('0.9.11'):
-            raise ImportError("CARLA version 0.9.11 or newer required. CARLA version found: {}".format(dist))
+        if LooseVersion(dist.version) < LooseVersion('0.9.12'):
+            raise ImportError("CARLA version 0.9.12 or newer required. CARLA version found: {}".format(dist))
 
         # Load agent if requested via command line args
         # If something goes wrong an exception will be thrown by importlib (ok here)
@@ -132,9 +133,6 @@ class ScenarioRunner(object):
         self._shutdown_requested = True
         if self.manager:
             self.manager.stop_scenario()
-            self._cleanup()
-            if not self.manager.get_running_status():
-                raise RuntimeError("Timeout occured during scenario execution")
 
     def _get_scenario_class_or_fail(self, scenario):
         """
@@ -168,6 +166,11 @@ class ScenarioRunner(object):
         """
         Remove and destroy all actors
         """
+        if self.finished:
+            return
+
+        self.finished = True
+
         # Simulation still running and in synchronous mode?
         if self.world is not None and self._args.sync:
             try:
@@ -186,7 +189,7 @@ class ScenarioRunner(object):
 
         for i, _ in enumerate(self.ego_vehicles):
             if self.ego_vehicles[i]:
-                if not self._args.waitForEgo:
+                if not self._args.waitForEgo and self.ego_vehicles[i] is not None and self.ego_vehicles[i].is_alive:
                     print("Destroying ego vehicle {}".format(self.ego_vehicles[i].id))
                     self.ego_vehicles[i].destroy()
                 self.ego_vehicles[i] = None
@@ -272,7 +275,7 @@ class ScenarioRunner(object):
         file_name = name[:-4] + ".json"
 
         # Filter the attributes that aren't JSON serializable
-        with open('temp.json', 'w') as fp:
+        with open('temp.json', 'w', encoding='utf-8') as fp:
 
             criteria_dict = {}
             for criterion in criteria:
@@ -292,7 +295,7 @@ class ScenarioRunner(object):
         os.remove('temp.json')
 
         # Save the criteria dictionary into a .json file
-        with open(file_name, 'w') as fp:
+        with open(file_name, 'w', encoding='utf-8') as fp:
             json.dump(criteria_dict, fp, sort_keys=False, indent=4)
 
     def _load_and_wait_for_world(self, town, ego_vehicles=None):
@@ -326,6 +329,8 @@ class ScenarioRunner(object):
             settings.synchronous_mode = True
             settings.fixed_delta_seconds = 1.0 / self.frame_rate
             self.world.apply_settings(settings)
+
+        CarlaDataProvider.set_client(self.client)
         CarlaDataProvider.set_world(self.world)
 
         # Wait for the world to be ready
@@ -334,8 +339,9 @@ class ScenarioRunner(object):
         else:
             self.world.wait_for_tick()
 
-        if CarlaDataProvider.get_map().name != town and CarlaDataProvider.get_map().name != "OpenDriveMap":
-            print("The CARLA server uses the wrong map: {}".format(CarlaDataProvider.get_map().name))
+        map_name = CarlaDataProvider.get_map().name.split('/')[-1]
+        if map_name not in (town, "OpenDriveMap"):
+            print("The CARLA server uses the wrong map: {}".format(map_name))
             print("This scenario requires to use map: {}".format(town))
             return False
 
@@ -441,6 +447,7 @@ class ScenarioRunner(object):
         # Execute each configuration
         for config in scenario_configurations:
             for _ in range(self._args.repetitions):
+                self.finished = False
                 result = self._load_and_run_scenario(config)
 
             self._cleanup()
@@ -480,7 +487,7 @@ class ScenarioRunner(object):
             self._cleanup()
             return False
 
-        openscenario_params = dict()
+        openscenario_params = {}
         if self._args.openscenarioparams is not None:
             for entry in self._args.openscenarioparams.split(','):
                 [key, val] = [m.strip() for m in entry.split(':')]
