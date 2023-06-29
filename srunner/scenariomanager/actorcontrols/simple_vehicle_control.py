@@ -93,7 +93,7 @@ class SimpleVehicleControl(BasicControl):
         self._consider_traffic_lights = False
         self._consider_obstacles = False
         self._proximity_threshold = float('inf')
-        self._waypoint_reached_threshold = 4.0
+        self._waypoint_reached_threshold = 0.2 # don't know if this is a reasonable value but it's better than 4m.
         self._max_deceleration = None
         self._max_acceleration = None
 
@@ -321,6 +321,10 @@ class SimpleVehicleControl(BasicControl):
         velocity.x = direction.x / direction_norm * target_speed
         velocity.y = direction.y / direction_norm * target_speed
 
+        if target_speed < 0:
+            velocity.x = -velocity.x
+            velocity.y = -velocity.y
+
         self._actor.set_target_velocity(velocity)
 
         # set new angular velocity
@@ -328,14 +332,18 @@ class SimpleVehicleControl(BasicControl):
         # When we have a waypoint list, use the direction between the waypoints to calculate the heading (change)
         # otherwise use the waypoint heading directly
         if self._waypoints:
-            delta_yaw = math.degrees(math.atan2(direction.y, direction.x)) - current_yaw
+            if target_speed < 0:
+                new_yaw = math.degrees(math.atan2(direction.y, direction.x)) - 180
+                delta_yaw = new_yaw - current_yaw
+            else:
+                delta_yaw = math.degrees(math.atan2(direction.y, direction.x)) - current_yaw
         else:
             new_yaw = CarlaDataProvider.get_map().get_waypoint(next_location).transform.rotation.yaw
             delta_yaw = new_yaw - current_yaw
 
         if math.fabs(delta_yaw) > 360:
             delta_yaw = delta_yaw % 360
-
+        
         if delta_yaw > 180:
             delta_yaw = delta_yaw - 360
         elif delta_yaw < -180:
@@ -344,6 +352,8 @@ class SimpleVehicleControl(BasicControl):
         angular_velocity = carla.Vector3D(0, 0, 0)
         if target_speed == 0:
             angular_velocity.z = 0
+        elif target_speed < 0:
+            angular_velocity.z = delta_yaw / (direction_norm / -target_speed)
         else:
             angular_velocity.z = delta_yaw / (direction_norm / target_speed)
         self._actor.set_target_angular_velocity(angular_velocity)
